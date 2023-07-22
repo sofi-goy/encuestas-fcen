@@ -7,6 +7,9 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup as bs
 
+from queue import Queue
+from threading import Thread
+
 BASE = "https://encuestas-finales.exactas.uba.ar/"
 
 respuestas_hash = {}
@@ -32,11 +35,11 @@ def parsear_periodo(periodo):
 
     return epoca, año
 
-def parsear_respuestas(url):
+def parsear_respuestas(id_, url):
     global respuestas_hash
     PREGUNTAS = 17
     imagen = requests.get(url).content
-    with open("/tmp/respuestas_exactas.png", "wb") as f:
+    with open(f"/tmp/{id_}.png", "wb") as f:
         f.write(imagen)
 
     img = cv2.imread("/tmp/respuestas_exactas.png")
@@ -92,7 +95,7 @@ def parsear_materia(materia, url):
         periodo = parsear_periodo(periodo)
         foto_url = '/'.join(fila.find("img")["src"].split("/")[1:])
 
-        respuestas = parsear_respuestas(BASE + foto_url)
+        respuestas = parsear_respuestas(id_materia + id_cuatri, BASE + foto_url)
         comentarios = parsear_comentarios(id_materia, id_cuatri)
 
         encuestas.append({
@@ -105,6 +108,24 @@ def parsear_materia(materia, url):
         })
     
     return encuestas
+
+def worker():
+    global scrapeadas, materias_queue
+
+    indice = 0
+    encuestas = []
+    while not materias_queue.empty():
+        materia, url = materias_queue.get()
+
+        encuestas +=  parsear_materia(materia, url)
+        scrapeadas += 1
+        print(f"Materia {materia} ({scrapeadas}/{total})")
+        indice = (indice + 1) % 10
+        if indice % 10 == 0:
+            print("Guardando...")
+            df = pd.DataFrame(encuestas)
+            df.to_csv("encuestas.csv", mode="a")
+            encuestas = []
         
 
 encuestas = []
@@ -114,12 +135,21 @@ if os.path.exists("encuestas.csv"):
     parseadas = pd.read_csv("encuestas.csv")
     materias = {k: v for k, v in materias.items() if k not in parseadas["materia"].unique()}
 
+total = len(materias)
+scrapeadas = 0
+materias_queue = Queue()
 for materia, url in materias.items():
-    print(f"Materia {materia} ({indice}/{len(materias)})")
-    encuestas +=  parsear_materia(materia, url)
-    indice += 1
-    if indice % 10 == 0:
-        print("Guardando...")
-        df = pd.DataFrame(encuestas)
-        df.to_csv("encuestas.csv", mode="a")
-        encuestas = []
+    materias_queue.put((materia, url))
+
+workers = []
+for i in range(50):
+    t = Thread(target=worker)
+    t.start()
+    workers.append(t)
+
+try:
+    for t in workers:
+        t.join()
+except KeyboardInterrupt:
+    print("Me cerraron!")
+    quit()
