@@ -1,0 +1,1 @@
+- Reconocer las imagenes descargas con OCR
