@@ -42,9 +42,9 @@ def parsear_respuestas(id_, url):
     with open(f"/tmp/{id_}.png", "wb") as f:
         f.write(imagen)
 
-    img = cv2.imread("/tmp/respuestas_exactas.png")
+    img = cv2.imread(f"/tmp/{id_}.png")
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img = cv2.threshold(img, 200, 255, cv2.THRESH_BINARY)[1]
+    _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     width = img.shape[1]
     width_res = width // PREGUNTAS + 1
